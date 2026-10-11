@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#d6246e">
+<title>Party Split</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+:root{--bg:#fffafc;--fg:#24151e;--mut:#7a6a73;--card:#fff;--line:#ecd9e2;--ac:#d6246e;--acf:#fff;--ok:#0b8a6a;--bad:#c8283b;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#190f15;--fg:#f7ebf1;--mut:#b49aa8;--card:#261820;--line:#40283a;--ac:#ff5c9d;--acf:#190f15;--ok:#3fd5ad;--bad:#ff7d8c}}
+:root[data-theme="dark"]{--bg:#190f15;--fg:#f7ebf1;--mut:#b49aa8;--card:#261820;--line:#40283a;--ac:#ff5c9d;--acf:#190f15;--ok:#3fd5ad;--bad:#ff7d8c}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+#app{max-width:640px;margin:0 auto;padding:14px 14px 60px}
+h1{font-size:26px;margin:8px 0 2px;letter-spacing:-.02em}
+h3{margin:0 0 8px;font-size:16px}
+.mut{color:var(--mut);font-size:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin:10px 0}
+.row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+input,select,textarea{width:100%;font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px;margin:4px 0}
+textarea{min-height:70px}
+label{display:block;font-size:14px;color:var(--mut)}
+input[type=checkbox]{width:auto;margin:0 6px 0 0}
+button{font:inherit;font-weight:600;border:1px solid var(--line);background:var(--card);color:var(--fg);border-radius:8px;padding:10px 14px;margin:4px 4px 4px 0;cursor:pointer}
+button.pri{background:var(--ac);color:var(--acf);border-color:var(--ac)}
+button.ghost{border:0;background:none;padding:6px 8px;color:var(--mut)}
+button.del{color:var(--bad)}
+.tabs{display:flex;gap:6px;margin:12px 0}
+.tabs button{flex:1;margin:0}
+.tabs button.on{background:var(--ac);color:var(--acf);border-color:var(--ac)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}
+.chip{border:1px solid var(--line);border-radius:20px;padding:6px 10px;color:var(--fg)}
+table{width:100%;border-collapse:collapse;font-size:15px}
+th,td{text-align:left;padding:8px 4px;border-bottom:1px solid var(--line)}
+th{font-size:13px;color:var(--mut);font-weight:600}
+td.n,th.n{text-align:right}
+td input{width:76px;padding:6px;margin:0;text-align:right}
+.ok{color:var(--ok);font-weight:600}.bad{color:var(--bad);font-weight:600}
+.wrap-x{overflow-x:auto}
+@media print{
+ .noprint{display:none!important}
+ body{background:#fff;color:#000}
+ .card{border:0;padding:0}
+ td input{border:0;background:none;color:#000;padding:0;width:auto;text-align:right}
+ .ok,.bad{color:#000}
+ :root{--line:#999;--mut:#444}
+}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+const K='partysplit.v1';
+let S={events:[]},cur=null,tab='people';
+const $=s=>document.querySelector(s);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const uid=()=>Math.random().toString(36).slice(2,9);
+const fmt=n=>(Math.round(n*100)/100).toLocaleString('en',{maximumFractionDigits:2});
+function load(){try{const j=localStorage.getItem(K);if(j)S=JSON.parse(j);}catch(e){}}
+function save(){try{localStorage.setItem(K,JSON.stringify(S));}catch(e){}}
+const ev=()=>S.events.find(e=>e.id===cur);
+function msg(t){const m=$('#msg');if(m)m.textContent=t;}
+
+function calc(e){
+ const m={};e.people.forEach(p=>m[p.id]={p,share:0,front:0});
+ let total=0;
+ e.items.forEach(it=>{
+  const c=+it.cost||0;total+=c;
+  const ids=(it.who&&it.who.length?it.who:e.people.filter(p=>!p.exempt).map(p=>p.id)).filter(i=>m[i]);
+  ids.forEach(i=>m[i].share+=c/ids.length);
+  if(it.by&&m[it.by])m[it.by].front+=c;
+ });
+ let owe=0,paid=0;
+ const rows=e.people.map(p=>{const r=m[p.id];if(e.round>0&&r.share>0.005)r.share=Math.ceil(r.share/e.round-1e-9)*e.round;r.paid=+p.paid||0;r.bal=r.front+r.paid-r.share;if(r.bal<-0.005)owe-=r.bal;paid+=r.paid;return r;});
+ const shares=rows.reduce((a,r)=>a+r.share,0);return{total,rows,owe,paid,shares};
+}
+const st=b=>b<-0.005?`<span class="bad">owes ${fmt(-b)}</span>`:b>0.005?`<span class="ok">gets back ${fmt(b)}</span>`:`<span class="ok">✓ settled</span>`;
+const nm=(e,id)=>{const p=e.people.find(x=>x.id===id);return p?esc(p.name):'Pot';};
+
+function home(){
+ const list=S.events.map(e=>{const c=calc(e);return `<div class="card row" onclick="openEv('${e.id}')"><div><b>${esc(e.name)}</b><div class="mut">${esc(e.date||'no date')} · ${e.people.length} people · ${fmt(c.total)} ${esc(e.cur)}</div></div><span class="mut">›</span></div>`;}).join('')||'<p class="mut">No events yet. Create the first one below.</p>';
+ return `<h1>🎂 Party Split</h1><div class="mut">Costs, contributions and a printable sheet per party.</div>${list}
+ <div class="card"><h3>New event</h3><input id="en" placeholder="Event name (e.g. Mona's birthday)"><input id="ed" type="date"><input id="ec" value="EGP" placeholder="Currency">${S.events.length?`<label>Start with the guest list from<select id="ep"><option value="">Empty list</option>${S.events.map(x=>`<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select></label>`:''}<button class="pri" onclick="addEv()">Create event</button></div>
+ <div class="card"><h3>Backup</h3><p class="mut">Data is stored only in this browser. Copy a backup before changing phones or handing the app over.</p><button onclick="copyBackup()">Copy backup</button><textarea id="bk" placeholder="Paste a backup here to restore it"></textarea><button onclick="restore()">Restore backup</button><div id="msg" class="mut"></div></div>`;
+}
+function evView(){
+ const e=ev();
+ const body=tab==='people'?people(e):tab==='items'?items(e):sheet(e);
+ return `<div class="noprint"><button class="ghost" onclick="back()">‹ All events</button></div><h1>${esc(e.name)}</h1><div class="mut">${esc(e.date||'')}</div>
+ <div class="tabs noprint">${[['people','People'],['items','Items'],['sheet','Sheet']].map(([k,l])=>`<button class="${tab===k?'on':''}" onclick="setTab('${k}')">${l}</button>`).join('')}</div>${body}
+ <div class="noprint" style="margin-top:24px"><button class="del" onclick="delEv(this)">Delete this event</button></div>`;
+}
+function people(e){
+ return `<div class="card"><textarea id="pn" placeholder="Add names, one per line or separated by commas"></textarea><button class="pri" onclick="addPeople()">Add people</button></div>`+
+ (e.people.map(p=>`<div class="card row"><b>${esc(p.name)}</b><span><label style="display:inline"><input type="checkbox" ${p.exempt?'checked':''} onchange="exempt('${p.id}',this.checked)">not paying</label><button class="ghost" onclick="delP('${p.id}')">✕</button></span></div>`).join('')||'<p class="mut">Add the guests first. Tick "not paying" for the birthday person.</p>');
+}
+function items(e){
+ const opts=e.people.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('');
+ return `<div class="card"><input id="in" placeholder="Item (cake, balloons, gift…)"><input id="ic" type="number" inputmode="decimal" placeholder="Cost (${esc(e.cur)})">
+ <label>Paid by<select id="ib"><option value="">Pot / organizer</option>${opts}</select></label>
+ <label>Shared by<select id="iw" onchange="$('#chips').style.display=this.value==='pick'?'flex':'none'"><option value="all">Everyone except "not paying"</option><option value="pick">Pick people…</option></select></label>
+ <div id="chips" class="chips" style="display:none">${e.people.map(p=>`<label class="chip"><input type="checkbox" value="${p.id}">${esc(p.name)}</label>`).join('')}</div>
+ <button class="pri" onclick="addItem()">Add item</button><div id="msg" class="bad"></div></div>`+
+ (e.items.map(it=>`<div class="card row"><div><b>${esc(it.name)}</b> · ${fmt(it.cost)} ${esc(e.cur)}<div class="mut">paid by ${nm(e,it.by)} · ${it.who&&it.who.length?it.who.length+' people':'everyone'}</div></div><button class="ghost" onclick="delItem('${it.id}')">✕</button></div>`).join('')||'<p class="mut">No items yet.</p>');
+}
+function sheet(e){
+ const c=calc(e);
+ return `<div class="card"><div class="row"><b>Total ${fmt(c.total)} ${esc(e.cur)}</b><span class="mut">Collected ${fmt(c.paid)} · To collect ${fmt(c.owe)}</span></div>${e.round>0&&c.shares-c.total>0.005?`<div class="mut">Rounding surplus: ${fmt(c.shares-c.total)} ${esc(e.cur)} stays in the pot</div>`:''}<label class="noprint">Round each share up to<select onchange="setRound(this.value)">${[0,1,5,10,20].map(v=>`<option value="${v}" ${(e.round||0)===v?'selected':''}>${v?'nearest '+v:'no rounding'}</option>`).join('')}</select></label></div>
+ <div class="card wrap-x"><table><tr><th>Name</th><th class="n">Share</th><th class="n">Paid in</th><th class="n">Status</th></tr>
+ ${c.rows.map(r=>`<tr><td>${esc(r.p.name)}${r.p.exempt?' <span class="mut">(guest)</span>':''}</td><td class="n">${fmt(r.share)}</td><td class="n"><input type="number" inputmode="decimal" value="${r.paid||''}" onchange="setPaid('${r.p.id}',this.value)"><button class="ghost noprint" onclick="fullPaid('${r.p.id}',${r.share.toFixed(2)})">full</button></td><td class="n">${st(r.bal)}</td></tr>`).join('')}</table></div>
+ <div class="card wrap-x"><h3>Bought</h3><table><tr><th>Item</th><th class="n">Cost</th><th>Paid by</th></tr>${e.items.map(it=>`<tr><td>${esc(it.name)}</td><td class="n">${fmt(it.cost)}</td><td>${nm(e,it.by)}</td></tr>`).join('')}</table></div>
+ <div class="noprint"><button class="pri" onclick="doPrint()">Print / Save PDF</button><button onclick="shareSummary()">Share</button><button onclick="copySummary()">Copy summary</button><div class="mut">If Print does nothing here, open this page directly in Chrome and try again.</div><div id="msg" class="mut"></div></div>`;
+}
+function R(){$('#app').innerHTML=cur?evView():home();window.scrollTo(0,0);}
+function openEv(id){cur=id;tab='people';R();}
+function back(){cur=null;R();}
+function setTab(t){tab=t;R();}
+function addEv(){
+ const n=$('#en').value.trim();if(!n)return;
+ const src=$('#ep')&&S.events.find(x=>x.id===$('#ep').value);const e={id:uid(),name:n,date:$('#ed').value,cur:$('#ec').value.trim()||'EGP',people:src?src.people.map(p=>({id:uid(),name:p.name,exempt:false,paid:0})):[],items:[]};
+ S.events.unshift(e);save();cur=e.id;tab='people';R();
+}
+function delEv(b){
+ if(!b.dataset.s){b.dataset.s=1;b.textContent='Tap again to delete';setTimeout(()=>{b.dataset.s='';b.textContent='Delete this event';},3000);return;}
+ S.events=S.events.filter(e=>e.id!==cur);save();back();
+}
+function addPeople(){
+ const e=ev();
+ $('#pn').value.split(/[\n,]+/).map(s=>s.trim()).filter(Boolean).forEach(n=>e.people.push({id:uid(),name:n,exempt:false,paid:0}));
+ save();R();
+}
+function exempt(id,v){ev().people.find(p=>p.id===id).exempt=v;save();}
+function delP(id){
+ const e=ev();e.people=e.people.filter(p=>p.id!==id);
+ e.items.forEach(it=>{if(it.by===id)it.by='';if(it.who)it.who=it.who.filter(i=>i!==id);});
+ save();R();
+}
+function addItem(){
+ const e=ev(),name=$('#in').value.trim(),cost=parseFloat($('#ic').value);
+ if(!name||!(cost>=0)){msg('Enter an item name and a cost.');return;}
+ let who=null;
+ if($('#iw').value==='pick'){who=[...document.querySelectorAll('#chips input:checked')].map(x=>x.value);if(!who.length){msg('Pick at least one person.');return;}}
+ e.items.push({id:uid(),name,cost,by:$('#ib').value,who});
+ save();R();
+}
+function delItem(id){const e=ev();e.items=e.items.filter(i=>i.id!==id);save();R();}
+function setRound(v){ev().round=+v;save();R();}
+function setPaid(id,v){ev().people.find(p=>p.id===id).paid=parseFloat(v)||0;save();R();}
+function fullPaid(id,v){ev().people.find(p=>p.id===id).paid=v;save();R();}
+function doPrint(){try{window.print();}catch(e){msg('Printing is blocked here. Use the browser menu: Share / Print.');}}
+async function copy(t,ok){
+ try{await navigator.clipboard.writeText(t);msg(ok);}
+ catch(e){const a=document.createElement('textarea');a.value=t;document.body.appendChild(a);a.select();try{document.execCommand('copy');msg(ok);}catch(x){msg('Copy failed. Long-press to copy manually.');}a.remove();}
+}
+function summaryText(){
+ const e=ev(),c=calc(e),L=[`🎂 ${e.name}${e.date?' — '+e.date:''}`,`Total: ${fmt(c.total)} ${e.cur}`,'','Bought:'];
+ e.items.forEach(i=>L.push(`• ${i.name}: ${fmt(i.cost)}`));
+ const owes=c.rows.filter(r=>r.bal<-0.005),back=c.rows.filter(r=>r.bal>0.005);
+ L.push('','Still to pay:');owes.forEach(r=>L.push(`• ${r.p.name}: ${fmt(-r.bal)}`));if(!owes.length)L.push('• nobody 🎉');
+ if(back.length){L.push('','To get back:');back.forEach(r=>L.push(`• ${r.p.name}: ${fmt(r.bal)}`));}
+ return L.join('\n');
+}
+function copySummary(){copy(summaryText(),'Summary copied. Paste it in WhatsApp.');}
+async function shareSummary(){try{await navigator.share({text:summaryText()});}catch(e){if(!e||e.name!=='AbortError')copySummary();}}
+function copyBackup(){copy(JSON.stringify(S),'Backup copied. Paste it somewhere safe.');}
+function restore(){
+ try{const d=JSON.parse($('#bk').value);if(!d||!Array.isArray(d.events))throw 0;S=d;save();R();}
+ catch(e){msg('That is not a valid backup.');}
+}
+load();R();
+if('serviceWorker' in navigator)window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
+</script>
+</body>
+</html>
